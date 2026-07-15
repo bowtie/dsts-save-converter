@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="./agumon-0.png" id="favicon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Convert Digimon Story: Time Stranger saves between PC and Nintendo Switch. Your saves stay on your device."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>Digimon Story: Time Stranger Save Converter (PC / Switch)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (function () {
+        var frames = ["./agumon-0.png", "./agumon-1.png"];
+        var i = 0;
+        var link = document.getElementById("favicon");
+        setInterval(function () {
+          i = (i + 1) % frames.length;
+          if (link) link.href = frames[i];
+        }, 500);
+      })();
+    </script>
+  </body>
+</html>

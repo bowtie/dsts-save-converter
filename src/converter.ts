@@ -11,18 +11,15 @@
  *    - PC stores gender at 0x0FDC50 (0=male, 1=female)
  *    - Switch expects gender at 0x0FDC54 and a zero format flag at 0x0FDC61
  *
- * 3. PC format flags (5 bytes): PC-specific markers (0x2E/0x80) at
- *    0x0FDAD0, 0x0FDAE8, 0x0FDAEC, 0x0FDAF0, 0x0FDAF4 must be zeroed
- *    for the Switch costume system to function.
- *
- * 4. Appearance data (909 bytes across 7 regions): PC uses string-based
+ * 3. Appearance data (909 bytes across 7 regions): PC uses string-based
  *    costume references (e.g. "common043"); Switch uses binary IDs.
  *    PC appearance is readable by Switch (model loads) but not writable
  *    (costume selection has no effect). These regions must be transplanted
  *    from a native Switch save of the same gender.
  *
  * Everything else — roster, inventory, items, quests, dialogue, playtime,
- * position, Digimon data — passes through byte-for-byte from the PC save.
+ * position, Digimon data, agent skill trees — passes through byte-for-byte
+ * from the PC save.
  */
 import { lz4Decompress, lz4Compress } from "./lz4";
 import { decryptPc } from "./crypto";
@@ -33,7 +30,6 @@ import {
   PC_GENDER_OFFSET,
   SWITCH_GENDER_OFFSET,
   TRAINER_FORMAT_OFFSET,
-  PC_FORMAT_FLAGS,
   APPEARANCE_REGIONS,
   parseHeaderText,
   base64ToUint8Array,
@@ -159,17 +155,6 @@ function patchTrainerModel(body: Uint8Array): boolean {
 }
 
 /**
- * Zero the PC format flags that block costume changes on Switch.
- * These are PC-specific markers (0x2E or 0x80) that the Switch game
- * interprets as "PC format, don't apply costume changes".
- */
-function zeroPcFormatFlags(body: Uint8Array): void {
-  for (const offset of PC_FORMAT_FLAGS) {
-    body[offset] = 0;
-  }
-}
-
-/**
  * Transplant appearance regions from a native Switch save.
  * PC and Switch use fundamentally different encodings for the
  * appearance/model block. Without this transplant, the model loads
@@ -291,7 +276,10 @@ async function readFile(file: File, maxBytes?: number): Promise<Uint8Array> {
   return new Uint8Array(buffer);
 }
 
-function parseFileInfo(headerBytes: Uint8Array): { playerName: string; playtime: string } {
+function parseFileInfo(headerBytes: Uint8Array): {
+  playerName: string;
+  playtime: string;
+} {
   const text = parseHeaderText(headerBytes);
   const fields = text.split(",");
   const playerName = fields[4]?.trim() ?? "?";
@@ -372,9 +360,6 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
 
     // Patch trainer model (2 bytes) — returns gender
     const isFemale = patchTrainerModel(body);
-
-    // Zero PC format flags (5 bytes)
-    zeroPcFormatFlags(body);
 
     // Transplant appearance regions from matching Switch reference (909 bytes)
     const swRefBinary = isFemale ? swRefFemaleBinary : swRefMaleBinary;

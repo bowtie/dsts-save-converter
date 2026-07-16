@@ -11,12 +11,16 @@ export const PC_GENDER_OFFSET = 0x0fdc50;
 export const SWITCH_GENDER_OFFSET = 0x0fdc54;
 export const TRAINER_FORMAT_OFFSET = 0x0fdc61;
 
-// ── PC format flags that must be zeroed for Switch ─────────
-// These are PC-specific markers (value 0x2E or 0x80) that block
-// costume changes on Switch. Zeroing them enables the costume system.
-export const PC_FORMAT_FLAGS: readonly number[] = [
-  0x0fdad0, 0x0fdae8, 0x0fdaec, 0x0fdaf0, 0x0fdaf4,
-];
+// ── Agent skill tree state (DO NOT ZERO) ───────────────────
+// These bytes track agent skill tree progression (0x00 = locked,
+// 0x01 = first skill, 0x2E = 46 skills maxed). Zeroing them would
+// wipe skill tree progress. They must be preserved during conversion.
+//
+// 0x0FDAD0: Main skill tree (not affected by skill unlocks)
+// 0x0FDAE8: Skill tree 1
+// 0x0FDAEC: Skill tree 2
+// 0x0FDAF0: Skill tree 3
+// 0x0FDAF4: Skill tree 4
 
 // ── Appearance regions ─────────────────────────────────────
 // PC and Switch use fundamentally different encodings for the

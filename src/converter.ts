@@ -20,7 +20,7 @@
  * from the PC save.
  */
 import { lz4Decompress, lz4Compress } from "./lz4";
-import { decryptPc } from "./crypto";
+import { decryptPc, encryptPc } from "./crypto";
 import {
   HEADER_SIZE,
   BINARY_DATA_SIZE,
@@ -43,25 +43,38 @@ export interface ConversionResult {
 // ── Patching ───────────────────────────────────────────────
 
 /**
- * Shift the outfit struct +4 bytes for Switch.
+ * Shift the outfit struct +4 bytes (PC→Switch) or -4 bytes (Switch→PC).
  *
  * The outfit struct (0x0FDC10, 92 bytes) is shifted +4 on Switch relative
  * to PC. This moves gender (0x0FDC50→0x0FDC54), costume (0x0FDC54→0x0FDC58),
- * and companions to their correct Switch offsets. The gap at 0x0FDC10-0x0FDC13
+ * and companions to their correct Switch offsets. The gap left by the shift
  * is zeroed.
  */
-function shiftOutfitStruct(body: Uint8Array): void {
-  const srcStart = OUTFIT_STRUCT_START;
-  const dstStart = OUTFIT_STRUCT_START + 4;
+function shiftOutfitStruct(body: Uint8Array, direction: "pc-to-switch" | "switch-to-pc"): void {
   const size = OUTFIT_STRUCT_SIZE;
 
-  // Copy struct data +4 bytes forward (right to left to avoid overlap)
-  for (let i = size - 1; i >= 0; i--) {
-    body[dstStart + i] = body[srcStart + i];
-  }
-  // Zero the 4-byte gap at the original start
-  for (let i = 0; i < 4; i++) {
-    body[srcStart + i] = 0;
+  if (direction === "pc-to-switch") {
+    const srcStart = OUTFIT_STRUCT_START;
+    const dstStart = OUTFIT_STRUCT_START + 4;
+    // Copy struct data +4 bytes forward (right to left to avoid overlap)
+    for (let i = size - 1; i >= 0; i--) {
+      body[dstStart + i] = body[srcStart + i];
+    }
+    // Zero the 4-byte gap at the original start
+    for (let i = 0; i < 4; i++) {
+      body[srcStart + i] = 0;
+    }
+  } else {
+    const srcStart = OUTFIT_STRUCT_START + 4;
+    const dstStart = OUTFIT_STRUCT_START;
+    // Copy struct data -4 bytes backward (left to right to avoid overlap)
+    for (let i = 0; i < size; i++) {
+      body[dstStart + i] = body[srcStart + i];
+    }
+    // Zero the 4-byte gap at the end
+    for (let i = 0; i < 4; i++) {
+      body[dstStart + size + i] = 0;
+    }
   }
 }
 
@@ -309,7 +322,7 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
     const isFemale = gender === 1;
 
     // Shift outfit struct +4 (moves gender/costume/companions to Switch offsets)
-    shiftOutfitStruct(body);
+    shiftOutfitStruct(body, "pc-to-switch");
 
     // Zero model data and appearance block (game fills at runtime)
     zeroModelRegions(body);
@@ -324,6 +337,104 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
     const output = new Uint8Array(HEADER_SIZE + compressed.length);
     output.set(header, 0);
     output.set(compressed, HEADER_SIZE);
+    files.set(file.name, output);
+
+    const info = parseFileInfo(header);
+    log.push(
+      `${file.name}: -> ${output.length} bytes (player: ${info.playerName}, playtime: ${info.playtime}, ${isFemale ? "female" : "male"}) [converted]`,
+    );
+  }
+
+  // Copy slot files (plaintext, same format)
+  for (const file of slotFiles) {
+    const data = await readFile(file);
+    files.set(file.name, data);
+    log.push(`${file.name}: copied`);
+  }
+
+  log.push(`\nDone! ${saveFiles.length} save(s) converted.`);
+  return { files, log: log.join("\n") };
+}
+
+// ── Switch → PC ────────────────────────────────────────────
+
+/**
+ * Convert Switch saves to PC format.
+ *
+ * Steps per save file:
+ * 1. Parse Switch header + LZ4 decompress
+ * 2. Read gender from 0x0FDC50
+ * 3. Shift outfit struct -4 (moves gender/costume/companions to PC offsets)
+ * 4. Zero model data and appearance block (game fills at runtime)
+ * 5. Restore gender at 0x0FDC50 (shift zeros it)
+ * 6. AES-128-ECB encrypt
+ *
+ * @param switchFiles  All .bin files from the Switch save folder
+ * @returns Conversion result with output files and log
+ */
+export async function convertSwitchToPc(switchFiles: File[]): Promise<ConversionResult> {
+  const log: string[] = [];
+  const files = new Map<string, Uint8Array>();
+
+  // Categorize Switch files
+  const saveFiles = switchFiles.filter(
+    (f) =>
+      f.name.endsWith(".bin") &&
+      !f.name.startsWith("slot_") &&
+      f.name !== "system_data.bin" &&
+      f.name !== "sysdata_dx11.bin",
+  );
+  const slotFiles = switchFiles.filter((f) => f.name.startsWith("slot_"));
+
+  if (saveFiles.length === 0) throw new Error("No save .bin files found in Switch files.");
+
+  for (const file of saveFiles) {
+    const raw = await readFile(file);
+    if (raw.length <= HEADER_SIZE) {
+      log.push(`SKIP ${file.name}: too short (${raw.length} bytes)`);
+      continue;
+    }
+
+    // Parse and validate Switch header
+    const headerBytes = raw.subarray(0, HEADER_SIZE);
+    parseSwitchHeader(headerBytes, file.name);
+
+    // LZ4 decompress the body
+    const compressed = raw.subarray(HEADER_SIZE);
+    const body = lz4Decompress(compressed, BINARY_DATA_SIZE);
+    if (body.length !== BINARY_DATA_SIZE) {
+      throw new Error(
+        `${file.name}: decompressed length ${body.length} does not match BINARY_DATA_SIZE ${BINARY_DATA_SIZE}`,
+      );
+    }
+
+    // Make a mutable copy of header and body
+    const header = new Uint8Array(HEADER_SIZE);
+    header.set(headerBytes);
+
+    // Read gender before shift
+    const gender = body[GENDER_OFFSET];
+    if (gender !== 0 && gender !== 1) {
+      throw new Error(
+        `${file.name}: unrecognized gender value ${gender} at 0x${GENDER_OFFSET.toString(16).toUpperCase()}`,
+      );
+    }
+    const isFemale = gender === 1;
+
+    // Shift outfit struct -4 (moves gender/costume/companions to PC offsets)
+    shiftOutfitStruct(body, "switch-to-pc");
+
+    // Zero model data and appearance block (game fills at runtime)
+    zeroModelRegions(body);
+
+    // Restore save-menu gender at 0x0FDC50 (shift zeros it)
+    patchGenderOffset(body, gender);
+
+    // Combine header + body and encrypt
+    const combined = new Uint8Array(PC_SAVE_SIZE);
+    combined.set(header, 0);
+    combined.set(body, HEADER_SIZE);
+    const output = encryptPc(combined);
     files.set(file.name, output);
 
     const info = parseFileInfo(header);

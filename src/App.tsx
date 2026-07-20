@@ -9,6 +9,7 @@ import { Toaster, toast } from "@/components/ui/toast";
 import { DownloadIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import {
   convertPcToSwitch,
+  convertSwitchToPc,
   detectPlatform,
   extractSaveMeta,
   type Platform,
@@ -50,16 +51,6 @@ export default function App() {
         description: hasBins
           ? "Make sure all .bin files are from the same platform."
           : "Select the save folder directly, not a parent folder.",
-      });
-      return;
-    }
-
-    if (detected === "switch") {
-      setClearSignal((s) => s + 1);
-      toast.create({
-        type: "error",
-        title: "These are Switch saves",
-        description: "Only PC to Switch is supported for now, Switch to PC is coming later.",
       });
       return;
     }
@@ -115,15 +106,19 @@ export default function App() {
       selectedSaves,
     );
 
-    if (platform === "pc") {
+    if (platform === "pc" || platform === "switch") {
       setBusy(true);
       try {
-        const result = await convertPcToSwitch(rawFiles);
+        const result =
+          platform === "pc"
+            ? await convertPcToSwitch(rawFiles)
+            : await convertSwitchToPc(rawFiles);
         toast.create({
           type: "success",
           title: `Converted ${selectedSaves.size} save(s) successfully!`,
         });
-        await downloadResult(result, "switch-save.zip");
+        const filename = platform === "pc" ? "switch-save.zip" : "pc-save.zip";
+        await downloadResult(result, filename);
       } catch (err) {
         toast.create({ type: "error", title: `Error: ${(err as Error).message}` });
       } finally {
@@ -132,15 +127,15 @@ export default function App() {
     } else {
       toast.create({
         type: "error",
-        title: "Only PC to Switch is supported for now, Switch to PC is coming later.",
+        title: "Upload a save folder first.",
       });
     }
   };
 
   const disabledReason = busy
     ? null
-    : platform !== "pc"
-      ? "Upload a PC save folder first"
+    : platform !== "pc" && platform !== "switch"
+      ? "Upload a save folder first"
       : selectedSaves.size === 0
         ? "Select at least one save"
         : null;
@@ -188,8 +183,8 @@ export default function App() {
               DSTS Save Converter
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Convert Digimon Story: Time Stranger saves from PC to Nintendo Switch. Nothing leaves
-              your browser.
+              Convert Digimon Story: Time Stranger saves between PC and Nintendo Switch. Nothing
+              leaves your browser.
             </p>
           </div>
         </header>
@@ -211,7 +206,7 @@ export default function App() {
           <CardContent className="p-3 space-y-3">
             {/* Folder upload */}
             <SaveFolderUpload
-              label="PC save folder"
+              label="Save folder"
               onFolderSelected={handleFolderSelected}
               onSelectedChange={handleSelectedChange}
               onClear={handleClear}
@@ -220,6 +215,8 @@ export default function App() {
               header={
                 platform === "pc" && files.length > 0 ? (
                   <Badge className="bg-primary text-primary-foreground">PC to Switch</Badge>
+                ) : platform === "switch" && files.length > 0 ? (
+                  <Badge className="bg-primary text-primary-foreground">Switch to PC</Badge>
                 ) : null
               }
             />

@@ -51,5 +51,16 @@ export function decryptPc(data: Uint8Array): Uint8Array {
   return result;
 }
 
-// Note: PC → Switch conversion only requires decryption.
-// Encryption (encryptPc) was removed — Switch → PC is not supported.
+/** Encrypt a PC save file (AES-128-ECB, no padding). */
+export function encryptPc(data: Uint8Array): Uint8Array {
+  assertBlockAligned(data);
+  const encrypted = CryptoJS.AES.encrypt(u8ToWordArray(data), key, {
+    mode: CryptoJS.mode.ECB,
+    padding: CryptoJS.pad.NoPadding,
+  });
+  const result = wordArrayToU8(encrypted.ciphertext);
+  if (result.length !== data.length) {
+    throw new Error(`Encrypted length ${result.length} does not match input ${data.length}`);
+  }
+  return result;
+}

@@ -116,9 +116,7 @@ export default function App() {
       setBusy(true);
       try {
         const result =
-          platform === "pc"
-            ? await convertPcToSwitch(rawFiles)
-            : await convertSwitchToPc(rawFiles);
+          platform === "pc" ? await convertPcToSwitch(rawFiles) : await convertSwitchToPc(rawFiles);
         toast.create({
           type: "success",
           title: `Converted ${selectedSaves.size} save(s) successfully!`,
@@ -200,9 +198,7 @@ export default function App() {
           <TriangleAlertIcon />
           <AlertTitle>Heads up, this is experimental</AlertTitle>
           <AlertDescription>
-            <span>
-              Back up your save before using it.
-            </span>
+            <span>Back up your save before using it.</span>
           </AlertDescription>
         </Alert>
 

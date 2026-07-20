@@ -270,7 +270,9 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
 
   // Categorize PC files — only 0000-0015.bin and slot_0000-0015.bin
   const saveFiles = pcFiles.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
-  const slotFiles = pcFiles.filter((f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15);
+  const slotFiles = pcFiles.filter(
+    (f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15,
+  );
 
   if (saveFiles.length === 0) throw new Error("No save .bin files found in PC files.");
 
@@ -367,8 +369,12 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
   const files = new Map<string, Uint8Array>();
 
   // Categorize Switch files — only 0000-0015.bin and slot_0000-0015.bin
-  const saveFiles = switchFiles.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
-  const slotFiles = switchFiles.filter((f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15);
+  const saveFiles = switchFiles.filter(
+    (f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15,
+  );
+  const slotFiles = switchFiles.filter(
+    (f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15,
+  );
 
   if (saveFiles.length === 0) throw new Error("No save .bin files found in Switch files.");
 

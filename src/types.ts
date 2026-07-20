@@ -4,40 +4,25 @@ export const HEADER_SIZE = 1024;
 export const BINARY_DATA_SIZE = 3_097_152;
 export const PC_SAVE_SIZE = 3_098_176;
 
-// ── Trainer model fix ──────────────────────────────────────
-// PC stores gender at 0x0FDC50 (0=male, 1=female).
-// Switch expects gender at 0x0FDC54 and a zero format flag at 0x0FDC61.
-export const PC_GENDER_OFFSET = 0x0fdc50;
-export const SWITCH_GENDER_OFFSET = 0x0fdc54;
-export const TRAINER_FORMAT_OFFSET = 0x0fdc61;
+// ── Outfit struct (shifted +4 on Switch) ───────────────────
+// The outfit struct (92 bytes) is at 0x0FDC10 on PC and 0x0FDC14 on Switch.
+// The +4 shift moves gender, costume, and companion values to their
+// correct Switch offsets. The game initializes model data at runtime,
+// so we zero those regions — no reference save needed.
+export const OUTFIT_STRUCT_START = 0x0fdc10;
+export const OUTFIT_STRUCT_SIZE = 0x5c; // 92 bytes
 
-// ── Agent skill tree state (DO NOT ZERO) ───────────────────
-// These bytes track agent skill tree progression (0x00 = locked,
-// 0x01 = first skill, 0x2E = 46 skills maxed). Zeroing them would
-// wipe skill tree progress. They must be preserved during conversion.
-//
-// 0x0FDAD0: Main skill tree (not affected by skill unlocks)
-// 0x0FDAE8: Skill tree 1
-// 0x0FDAEC: Skill tree 2
-// 0x0FDAF0: Skill tree 3
-// 0x0FDAF4: Skill tree 4
+// ── Gender ─────────────────────────────────────────────────
+// Save-menu gender is at 0x0FDC50 on BOTH platforms (0=male, 1=female).
+// In-game model gender is at 0x0FDC50 on PC, 0x0FDC54 on Switch (shifted +4).
+// The shift moves it; we just restore 0x0FDC50 after.
+export const GENDER_OFFSET = 0x0fdc50;
 
-// ── Appearance regions ─────────────────────────────────────
-// PC and Switch use fundamentally different encodings for the
-// appearance/model block (PC uses string-based costume references
-// like "common043", Switch uses binary IDs). These regions must be
-// transplanted from a native Switch save (same gender) for costume
-// changes to work in-game. PC appearance is readable by Switch (model
-// loads) but not writable (costume selection has no effect).
-export const APPEARANCE_REGIONS: ReadonlyArray<readonly [number, number]> = [
-  [0x0fdad1, 6], // costume ID
-  [0x0fdb11, 3], // color/flag 1
-  [0x0fdc16, 88], // model data 1
-  [0x0fdd84, 28], // model data 2
-  [0x0fdebd, 773], // appearance/model block (PC strings → Switch binary IDs)
-  [0x105119, 3], // color/flag 2
-  [0x1051d8, 8], // color/flag 3
-];
+// ── Model regions (zeroed — game fills at runtime) ─────────
+export const MODEL_DATA_START = 0x0fdd84;
+export const MODEL_DATA_SIZE = 28;
+export const APPEARANCE_BLOCK_START = 0x0fdebd;
+export const APPEARANCE_BLOCK_SIZE = 773;
 
 // ── Binary helpers ─────────────────────────────────────────
 

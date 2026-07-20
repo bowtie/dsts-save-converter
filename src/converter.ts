@@ -7,15 +7,13 @@
  * 1. Container: PC saves are AES-128-ECB encrypted; Switch saves use
  *    a plaintext header + LZ4-compressed body.
  *
- * 2. Trainer model flags (2 bytes):
- *    - PC stores gender at 0x0FDC50 (0=male, 1=female)
- *    - Switch expects gender at 0x0FDC54 and a zero format flag at 0x0FDC61
+ * 2. Outfit struct shift: The outfit struct (92 bytes at 0x0FDC10) is
+ *    shifted +4 bytes on Switch. This moves gender, costume, and companion
+ *    values to their correct Switch offsets.
  *
- * 3. Appearance data (909 bytes across 7 regions): PC uses string-based
- *    costume references (e.g. "common043"); Switch uses binary IDs.
- *    PC appearance is readable by Switch (model loads) but not writable
- *    (costume selection has no effect). These regions must be transplanted
- *    from a native Switch save of the same gender.
+ * 3. Model data: The game initializes model/appearance data at runtime
+ *    from gender + costume index, so we zero those regions (801 bytes).
+ *    No reference save needed.
  *
  * Everything else — roster, inventory, items, quests, dialogue, playtime,
  * position, Digimon data, agent skill trees — passes through byte-for-byte
@@ -27,12 +25,14 @@ import {
   HEADER_SIZE,
   BINARY_DATA_SIZE,
   PC_SAVE_SIZE,
-  PC_GENDER_OFFSET,
-  SWITCH_GENDER_OFFSET,
-  TRAINER_FORMAT_OFFSET,
-  APPEARANCE_REGIONS,
+  GENDER_OFFSET,
+  OUTFIT_STRUCT_START,
+  OUTFIT_STRUCT_SIZE,
+  MODEL_DATA_START,
+  MODEL_DATA_SIZE,
+  APPEARANCE_BLOCK_START,
+  APPEARANCE_BLOCK_SIZE,
   parseHeaderText,
-  base64ToUint8Array,
 } from "./types";
 
 export interface ConversionResult {
@@ -40,135 +40,59 @@ export interface ConversionResult {
   log: string;
 }
 
-// ── Switch references (embedded, gender-specific) ──────────
-//
-// We embed two Switch reference saves — one male, one female — from the
-// same game point. The appearance regions are gender-specific, so we must
-// transplant from the reference that matches the PC save's gender.
-
-let _swRefMaleBinary: Uint8Array | null = null;
-let _swRefFemaleBinary: Uint8Array | null = null;
-let _swRefMaleB64: string | null = null;
-let _swRefFemaleB64: string | null = null;
-
-/** Load both Switch reference base64 strings (fetched once from public/). */
-export async function loadSwitchRefB64(): Promise<void> {
-  const tasks: Promise<void>[] = [];
-  if (!_swRefMaleB64) {
-    tasks.push(
-      fetch("./switch_ref_male.b64")
-        .then((r) => {
-          if (!r.ok) throw new Error(`Failed to load male Switch reference: HTTP ${r.status}`);
-          return r.text();
-        })
-        .then((t) => {
-          _swRefMaleB64 = t;
-        }),
-    );
-  }
-  if (!_swRefFemaleB64) {
-    tasks.push(
-      fetch("./switch_ref_female.b64")
-        .then((r) => {
-          if (!r.ok) throw new Error(`Failed to load female Switch reference: HTTP ${r.status}`);
-          return r.text();
-        })
-        .then((t) => {
-          _swRefFemaleB64 = t;
-        }),
-    );
-  }
-  await Promise.all(tasks);
-}
-
-/**
- * Parse and validate a Switch save header.
- * Requires exactly HEADER_SIZE bytes, field 1 must equal BINARY_DATA_SIZE.
- */
-function parseSwitchHeader(headerBytes: Uint8Array, source: string): void {
-  if (headerBytes.length !== HEADER_SIZE) {
-    throw new Error(
-      `Invalid Switch header from ${source}: expected ${HEADER_SIZE} bytes, got ${headerBytes.length}`,
-    );
-  }
-  const headerText = parseHeaderText(headerBytes);
-  const fields = headerText.split(",");
-  if (fields.length < 2) {
-    throw new Error(`Invalid Switch header from ${source}: not enough fields`);
-  }
-  const sizeField = fields[1].trim();
-  const parsed = Number.parseInt(sizeField, 10);
-  if (!Number.isInteger(parsed) || parsed !== BINARY_DATA_SIZE) {
-    throw new Error(
-      `Invalid Switch header from ${source}: binary size ${sizeField} does not match expected ${BINARY_DATA_SIZE}`,
-    );
-  }
-}
-
-/** Decompress a Switch reference from its base64 string. */
-function decompressRef(b64: string, label: string): Uint8Array {
-  const compressed = base64ToUint8Array(b64.trim());
-  if (compressed.length <= HEADER_SIZE) {
-    throw new Error(`Embedded ${label} is too short`);
-  }
-  parseSwitchHeader(compressed.subarray(0, HEADER_SIZE), `embedded ${label}`);
-  return lz4Decompress(compressed.subarray(HEADER_SIZE), BINARY_DATA_SIZE);
-}
-
-/** Get the male Switch reference binary (cached). */
-function getSwitchRefMaleBinary(): Uint8Array {
-  if (_swRefMaleBinary) return _swRefMaleBinary;
-  if (!_swRefMaleB64)
-    throw new Error("Male Switch reference not loaded — call loadSwitchRefB64() first");
-  _swRefMaleBinary = decompressRef(_swRefMaleB64, "male Switch reference");
-  return _swRefMaleBinary;
-}
-
-/** Get the female Switch reference binary (cached). */
-function getSwitchRefFemaleBinary(): Uint8Array {
-  if (_swRefFemaleBinary) return _swRefFemaleBinary;
-  if (!_swRefFemaleB64)
-    throw new Error("Female Switch reference not loaded — call loadSwitchRefB64() first");
-  _swRefFemaleBinary = decompressRef(_swRefFemaleB64, "female Switch reference");
-  return _swRefFemaleBinary;
-}
-
 // ── Patching ───────────────────────────────────────────────
 
 /**
- * Patch the 2-byte trainer model fix:
- * - Set Switch gender flag (0x0FDC54) to the PC gender value (0 or 1)
- * - Zero the trainer format flag (0x0FDC61)
+ * Shift the outfit struct +4 bytes for Switch.
  *
- * Returns true if the PC save is female.
+ * The outfit struct (0x0FDC10, 92 bytes) is shifted +4 on Switch relative
+ * to PC. This moves gender (0x0FDC50→0x0FDC54), costume (0x0FDC54→0x0FDC58),
+ * and companions to their correct Switch offsets. The gap at 0x0FDC10-0x0FDC13
+ * is zeroed.
  */
-function patchTrainerModel(body: Uint8Array): boolean {
-  const gender = body[PC_GENDER_OFFSET];
-  if (gender !== 0 && gender !== 1) {
-    throw new Error(
-      `Unrecognized PC gender value ${gender} at 0x${PC_GENDER_OFFSET.toString(16).toUpperCase()}`,
-    );
+function shiftOutfitStruct(body: Uint8Array): void {
+  const srcStart = OUTFIT_STRUCT_START;
+  const dstStart = OUTFIT_STRUCT_START + 4;
+  const size = OUTFIT_STRUCT_SIZE;
+
+  // Copy struct data +4 bytes forward (right to left to avoid overlap)
+  for (let i = size - 1; i >= 0; i--) {
+    body[dstStart + i] = body[srcStart + i];
   }
-  body[SWITCH_GENDER_OFFSET] = gender;
-  body[TRAINER_FORMAT_OFFSET] = 0;
-  return gender === 1;
+  // Zero the 4-byte gap at the original start
+  for (let i = 0; i < 4; i++) {
+    body[srcStart + i] = 0;
+  }
 }
 
 /**
- * Transplant appearance regions from a native Switch save.
- * PC and Switch use fundamentally different encodings for the
- * appearance/model block. Without this transplant, the model loads
- * but costume changes have no visual effect.
+ * Zero model data and appearance block.
+ *
+ * The Switch game initializes these at runtime from gender + costume index.
+ * Verified for both male and female: zeroed saves render correctly, the
+ * game rewrites model data on area load, and the appearance block stays
+ * zero permanently.
  */
-function transplantAppearance(body: Uint8Array, swRefBody: Uint8Array): void {
-  for (const [start, length] of APPEARANCE_REGIONS) {
-    const end = start + length;
-    if (end <= body.length && end <= swRefBody.length) {
-      for (let i = 0; i < length; i++) {
-        body[start + i] = swRefBody[start + i];
-      }
+function zeroModelRegions(body: Uint8Array): void {
+  const regions: ReadonlyArray<readonly [number, number]> = [
+    [MODEL_DATA_START, MODEL_DATA_SIZE],
+    [APPEARANCE_BLOCK_START, APPEARANCE_BLOCK_SIZE],
+  ];
+  for (const [start, size] of regions) {
+    for (let i = 0; i < size; i++) {
+      body[start + i] = 0;
     }
   }
+}
+
+/**
+ * Restore the save-menu gender byte at 0x0FDC50.
+ *
+ * The shift zeros this offset (it's the gap before the shifted struct).
+ * We restore it from the original gender value.
+ */
+function patchGenderOffset(body: Uint8Array, gender: number): void {
+  body[GENDER_OFFSET] = gender;
 }
 
 // ── Auto-detection ─────────────────────────────────────────
@@ -291,6 +215,30 @@ function parseFileInfo(headerBytes: Uint8Array): {
   return { playerName, playtime };
 }
 
+/**
+ * Parse and validate a Switch save header.
+ * Requires exactly HEADER_SIZE bytes, field 1 must equal BINARY_DATA_SIZE.
+ */
+function parseSwitchHeader(headerBytes: Uint8Array, source: string): void {
+  if (headerBytes.length !== HEADER_SIZE) {
+    throw new Error(
+      `Invalid Switch header from ${source}: expected ${HEADER_SIZE} bytes, got ${headerBytes.length}`,
+    );
+  }
+  const headerText = parseHeaderText(headerBytes);
+  const fields = headerText.split(",");
+  if (fields.length < 2) {
+    throw new Error(`Invalid Switch header from ${source}: not enough fields`);
+  }
+  const sizeField = fields[1].trim();
+  const parsed = Number.parseInt(sizeField, 10);
+  if (!Number.isInteger(parsed) || parsed !== BINARY_DATA_SIZE) {
+    throw new Error(
+      `Invalid Switch header from ${source}: binary size ${sizeField} does not match expected ${BINARY_DATA_SIZE}`,
+    );
+  }
+}
+
 // ── PC → Switch ────────────────────────────────────────────
 
 /**
@@ -298,25 +246,18 @@ function parseFileInfo(headerBytes: Uint8Array): {
  *
  * Steps per save file:
  * 1. AES-128-ECB decrypt
- * 2. Patch 2-byte trainer model fix (gender + format flag)
- * 3. Zero 5 PC format flags
- * 4. Transplant 7 appearance regions from Switch reference (same gender)
- * 5. LZ4 compress
+ * 2. Read gender from 0x0FDC50
+ * 3. Shift outfit struct +4 (moves gender/costume/companions to Switch offsets)
+ * 4. Zero model data and appearance block (game fills at runtime)
+ * 5. Restore gender at 0x0FDC50 (shift zeros it)
+ * 6. LZ4 compress
  *
  * @param pcFiles  All .bin files from the PC save folder
  * @returns Conversion result with output files and log
  */
 export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResult> {
-  await loadSwitchRefB64();
-  const swRefMaleBinary = getSwitchRefMaleBinary();
-  const swRefFemaleBinary = getSwitchRefFemaleBinary();
-
   const log: string[] = [];
   const files = new Map<string, Uint8Array>();
-
-  log.push(
-    `Loaded Switch references (male: ${swRefMaleBinary.length} bytes, female: ${swRefFemaleBinary.length} bytes)`,
-  );
 
   // Categorize PC files
   const saveFiles = pcFiles.filter(
@@ -358,12 +299,23 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
     const body = new Uint8Array(binaryData.length);
     body.set(binaryData);
 
-    // Patch trainer model (2 bytes) — returns gender
-    const isFemale = patchTrainerModel(body);
+    // Read gender before shift
+    const gender = body[GENDER_OFFSET];
+    if (gender !== 0 && gender !== 1) {
+      throw new Error(
+        `${file.name}: unrecognized gender value ${gender} at 0x${GENDER_OFFSET.toString(16).toUpperCase()}`,
+      );
+    }
+    const isFemale = gender === 1;
 
-    // Transplant appearance regions from matching Switch reference (909 bytes)
-    const swRefBinary = isFemale ? swRefFemaleBinary : swRefMaleBinary;
-    transplantAppearance(body, swRefBinary);
+    // Shift outfit struct +4 (moves gender/costume/companions to Switch offsets)
+    shiftOutfitStruct(body);
+
+    // Zero model data and appearance block (game fills at runtime)
+    zeroModelRegions(body);
+
+    // Restore save-menu gender at 0x0FDC50 (shift zeros it)
+    patchGenderOffset(body, gender);
 
     // LZ4 compress
     const compressed = lz4Compress(body);

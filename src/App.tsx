@@ -6,18 +6,11 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Toaster, toast } from "@/components/ui/toast";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
 import { DownloadIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import {
   convertPcToSwitch,
   detectPlatform,
   extractSaveMeta,
-  loadSwitchRefB64,
   type Platform,
   type ConversionResult,
 } from "./converter";
@@ -33,10 +26,6 @@ export default function App() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [clearSignal, setClearSignal] = useState(0);
-
-  useEffect(() => {
-    loadSwitchRefB64().catch((err) => console.error("Failed to load Switch reference:", err));
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -216,44 +205,6 @@ export default function App() {
             </span>
           </AlertDescription>
         </Alert>
-
-        {/* FAQ */}
-        <div className="mb-6">
-          <Accordion>
-            <AccordionItem value="how">
-              <AccordionTrigger className="py-3">How does it work?</AccordionTrigger>
-              <AccordionContent className="text-muted-foreground pb-3">
-                Just drop your PC save folder and hit convert. Everything runs right in your
-                browser, nothing gets uploaded anywhere.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="costume">
-              <AccordionTrigger className="py-3">Why did my outfit reset?</AccordionTrigger>
-              <AccordionContent className="text-muted-foreground pb-3">
-                PC and Switch store outfit data differently, so we swap in a fresh default outfit to
-                make sure costumes work properly on Switch. Your old PC outfit won't carry over, but
-                you can change costumes freely in-game once you're loaded in.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="issues">
-              <AccordionTrigger className="py-3">Experiencing issues?</AccordionTrigger>
-              <AccordionContent className="text-muted-foreground pb-3">
-                The save file differences between PC and Switch are still being figured out, so it's
-                not clear yet what carries over properly and what doesn't. Some PC data might not
-                work correctly on Switch. If you run into anything weird,{" "}
-                <a
-                  href="https://github.com/bowtie/dsts-save-converter/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-foreground"
-                >
-                  let me know
-                </a>
-                .
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
 
         {/* Converter */}
         <Card className="gap-0 rounded-xl py-0">

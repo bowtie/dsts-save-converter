@@ -1,9 +1,4 @@
-/**
- * AES-128-ECB encryption/decryption for PC save files.
- *
- * PC saves are encrypted with AES-128-ECB using a fixed key.
- * This module wraps crypto-js for use in the browser.
- */
+/** AES-128-ECB encryption/decryption for PC save files. */
 import CryptoJS from "crypto-js";
 
 const AES_KEY_HEX = "33393632373736373534353535383833";

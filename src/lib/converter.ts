@@ -1,24 +1,4 @@
-/**
- * Core conversion logic: PC → Switch save format.
- *
- * The PC and Switch save formats are nearly identical at the binary level.
- * The only differences are:
- *
- * 1. Container: PC saves are AES-128-ECB encrypted; Switch saves use
- *    a plaintext header + LZ4-compressed body.
- *
- * 2. Outfit struct shift: The outfit struct (92 bytes at 0x0FDC10) is
- *    shifted +4 bytes on Switch. This moves gender, costume, and companion
- *    values to their correct Switch offsets.
- *
- * 3. Model data: The game initializes model/appearance data at runtime
- *    from gender + costume index, so we zero those regions (801 bytes).
- *    No reference save needed.
- *
- * Everything else — roster, inventory, items, quests, dialogue, playtime,
- * position, Digimon data, agent skill trees — passes through byte-for-byte
- * from the PC save.
- */
+/** Core conversion logic: PC ↔ Switch save format. */
 import { lz4Decompress, lz4Compress } from "./lz4";
 import { decryptPc, encryptPc } from "./crypto";
 import {
@@ -42,14 +22,7 @@ export interface ConversionResult {
 
 // ── Patching ───────────────────────────────────────────────
 
-/**
- * Shift the outfit struct +4 bytes (PC→Switch) or -4 bytes (Switch→PC).
- *
- * The outfit struct (0x0FDC10, 92 bytes) is shifted +4 on Switch relative
- * to PC. This moves gender (0x0FDC50→0x0FDC54), costume (0x0FDC54→0x0FDC58),
- * and companions to their correct Switch offsets. The gap left by the shift
- * is zeroed.
- */
+/** Shift the outfit struct +4 bytes (PC→Switch) or -4 bytes (Switch→PC). */
 function shiftOutfitStruct(body: Uint8Array, direction: "pc-to-switch" | "switch-to-pc"): void {
   const size = OUTFIT_STRUCT_SIZE;
 
@@ -78,14 +51,7 @@ function shiftOutfitStruct(body: Uint8Array, direction: "pc-to-switch" | "switch
   }
 }
 
-/**
- * Zero model data and appearance block.
- *
- * The Switch game initializes these at runtime from gender + costume index.
- * Verified for both male and female: zeroed saves render correctly, the
- * game rewrites model data on area load, and the appearance block stays
- * zero permanently.
- */
+/** Zero model data and appearance block (game fills at runtime). */
 function zeroModelRegions(body: Uint8Array): void {
   const regions: ReadonlyArray<readonly [number, number]> = [
     [MODEL_DATA_START, MODEL_DATA_SIZE],
@@ -98,12 +64,7 @@ function zeroModelRegions(body: Uint8Array): void {
   }
 }
 
-/**
- * Restore the save-menu gender byte at 0x0FDC50.
- *
- * The shift zeros this offset (it's the gap before the shifted struct).
- * We restore it from the original gender value.
- */
+/** Restore the save-menu gender byte at 0x0FDC50 (the shift zeros it). */
 function patchGenderOffset(body: Uint8Array, gender: number): void {
   body[GENDER_OFFSET] = gender;
 }
@@ -112,12 +73,7 @@ function patchGenderOffset(body: Uint8Array, gender: number): void {
 
 export type Platform = "pc" | "switch" | "unknown";
 
-/**
- * Detect whether save files are PC or Switch format.
- *
- * PC saves: exactly 3,098,176 bytes, AES-128-ECB encrypted (header is gibberish)
- * Switch saves: 1024-byte plaintext header + LZ4-compressed data (variable size, header is readable text)
- */
+/** Detect whether save files are PC or Switch format. */
 export async function detectPlatform(files: File[]): Promise<Platform> {
   const saveFiles = files.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
   if (saveFiles.length === 0) return "unknown";
@@ -148,15 +104,7 @@ export interface SaveFileMeta {
   playtime: string;
 }
 
-/**
- * Extract player name and playtime from slot_ metadata files.
- * These are plaintext on both PC and Switch (720 bytes each):
- *   offset 0x00: slot label (e.g. "#00 Unused text")
- *   offset 0x40: player name (null-terminated string)
- *   offset 0xC0: play time string (e.g. "Play Time　11Hours20Minutes")
- *
- * Maps slot_NNNN.bin metadata to the corresponding NNNN.bin save file.
- */
+/** Extract player name and playtime from slot_ metadata files. */
 export async function extractSaveMeta(files: File[]): Promise<SaveFileMeta[]> {
   const slotFiles = files.filter(
     (f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15,
@@ -224,10 +172,7 @@ function parseFileInfo(headerBytes: Uint8Array): {
   return { playerName, playtime };
 }
 
-/**
- * Parse and validate a Switch save header.
- * Requires exactly HEADER_SIZE bytes, field 1 must equal BINARY_DATA_SIZE.
- */
+/** Parse and validate a Switch save header. */
 function parseSwitchHeader(headerBytes: Uint8Array, source: string): void {
   if (headerBytes.length !== HEADER_SIZE) {
     throw new Error(
@@ -250,25 +195,11 @@ function parseSwitchHeader(headerBytes: Uint8Array, source: string): void {
 
 // ── PC → Switch ────────────────────────────────────────────
 
-/**
- * Convert PC saves to Switch format.
- *
- * Steps per save file:
- * 1. AES-128-ECB decrypt
- * 2. Read gender from 0x0FDC50
- * 3. Shift outfit struct +4 (moves gender/costume/companions to Switch offsets)
- * 4. Zero model data and appearance block (game fills at runtime)
- * 5. Restore gender at 0x0FDC50 (shift zeros it)
- * 6. LZ4 compress
- *
- * @param pcFiles  All .bin files from the PC save folder
- * @returns Conversion result with output files and log
- */
+/** Convert PC saves to Switch format. */
 export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResult> {
   const log: string[] = [];
   const files = new Map<string, Uint8Array>();
 
-  // Categorize PC files — only 0000-0015.bin and slot_0000-0015.bin
   const saveFiles = pcFiles.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
   const slotFiles = pcFiles.filter(
     (f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15,
@@ -283,7 +214,6 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
       continue;
     }
 
-    // Decrypt
     const decrypted = decryptPc(encrypted);
     if (decrypted.length !== PC_SAVE_SIZE) {
       throw new Error(
@@ -291,7 +221,6 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
       );
     }
 
-    // Split header and binary
     const header = decrypted.subarray(0, HEADER_SIZE);
     const binaryData = decrypted.subarray(HEADER_SIZE);
     if (binaryData.length !== BINARY_DATA_SIZE) {
@@ -300,11 +229,9 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
       );
     }
 
-    // Make a mutable copy of the binary
     const body = new Uint8Array(binaryData.length);
     body.set(binaryData);
 
-    // Read gender before shift
     const gender = body[GENDER_OFFSET];
     if (gender !== 0 && gender !== 1) {
       throw new Error(
@@ -313,19 +240,12 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
     }
     const isFemale = gender === 1;
 
-    // Shift outfit struct +4 (moves gender/costume/companions to Switch offsets)
     shiftOutfitStruct(body, "pc-to-switch");
-
-    // Zero model data and appearance block (game fills at runtime)
     zeroModelRegions(body);
-
-    // Restore save-menu gender at 0x0FDC50 (shift zeros it)
     patchGenderOffset(body, gender);
 
-    // LZ4 compress
     const compressed = lz4Compress(body);
 
-    // Combine header + compressed
     const output = new Uint8Array(HEADER_SIZE + compressed.length);
     output.set(header, 0);
     output.set(compressed, HEADER_SIZE);
@@ -337,7 +257,6 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
     );
   }
 
-  // Copy slot files (plaintext, same format)
   for (const file of slotFiles) {
     const data = await readFile(file);
     files.set(file.name, data);
@@ -350,25 +269,11 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
 
 // ── Switch → PC ────────────────────────────────────────────
 
-/**
- * Convert Switch saves to PC format.
- *
- * Steps per save file:
- * 1. Parse Switch header + LZ4 decompress
- * 2. Read gender from 0x0FDC50
- * 3. Shift outfit struct -4 (moves gender/costume/companions to PC offsets)
- * 4. Zero model data and appearance block (game fills at runtime)
- * 5. Restore gender at 0x0FDC50 (shift zeros it)
- * 6. AES-128-ECB encrypt
- *
- * @param switchFiles  All .bin files from the Switch save folder
- * @returns Conversion result with output files and log
- */
+/** Convert Switch saves to PC format. */
 export async function convertSwitchToPc(switchFiles: File[]): Promise<ConversionResult> {
   const log: string[] = [];
   const files = new Map<string, Uint8Array>();
 
-  // Categorize Switch files — only 0000-0015.bin and slot_0000-0015.bin
   const saveFiles = switchFiles.filter(
     (f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15,
   );
@@ -385,11 +290,9 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
       continue;
     }
 
-    // Parse and validate Switch header
     const headerBytes = raw.subarray(0, HEADER_SIZE);
     parseSwitchHeader(headerBytes, file.name);
 
-    // LZ4 decompress the body
     const compressed = raw.subarray(HEADER_SIZE);
     const body = lz4Decompress(compressed, BINARY_DATA_SIZE);
     if (body.length !== BINARY_DATA_SIZE) {
@@ -398,11 +301,9 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
       );
     }
 
-    // Make a mutable copy of header and body
     const header = new Uint8Array(HEADER_SIZE);
     header.set(headerBytes);
 
-    // Read gender before shift
     const gender = body[GENDER_OFFSET];
     if (gender !== 0 && gender !== 1) {
       throw new Error(
@@ -411,16 +312,10 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
     }
     const isFemale = gender === 1;
 
-    // Shift outfit struct -4 (moves gender/costume/companions to PC offsets)
     shiftOutfitStruct(body, "switch-to-pc");
-
-    // Zero model data and appearance block (game fills at runtime)
     zeroModelRegions(body);
-
-    // Restore save-menu gender at 0x0FDC50 (shift zeros it)
     patchGenderOffset(body, gender);
 
-    // Combine header + body and encrypt
     const combined = new Uint8Array(PC_SAVE_SIZE);
     combined.set(header, 0);
     combined.set(body, HEADER_SIZE);
@@ -433,7 +328,6 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
     );
   }
 
-  // Copy slot files (plaintext, same format)
   for (const file of slotFiles) {
     const data = await readFile(file);
     files.set(file.name, data);

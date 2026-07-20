@@ -5,17 +5,10 @@ export const BINARY_DATA_SIZE = 3_097_152;
 export const PC_SAVE_SIZE = 3_098_176;
 
 // ── Outfit struct (shifted +4 on Switch) ───────────────────
-// The outfit struct (92 bytes) is at 0x0FDC10 on PC and 0x0FDC14 on Switch.
-// The +4 shift moves gender, costume, and companion values to their
-// correct Switch offsets. The game initializes model data at runtime,
-// so we zero those regions — no reference save needed.
 export const OUTFIT_STRUCT_START = 0x0fdc10;
 export const OUTFIT_STRUCT_SIZE = 0x5c; // 92 bytes
 
-// ── Gender ─────────────────────────────────────────────────
-// Save-menu gender is at 0x0FDC50 on BOTH platforms (0=male, 1=female).
-// In-game model gender is at 0x0FDC50 on PC, 0x0FDC54 on Switch (shifted +4).
-// The shift moves it; we just restore 0x0FDC50 after.
+// ── Gender (0x0FDC50 on both platforms) ────────────────────
 export const GENDER_OFFSET = 0x0fdc50;
 
 // ── Model regions (zeroed — game fills at runtime) ─────────

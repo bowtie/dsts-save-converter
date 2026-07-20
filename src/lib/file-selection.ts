@@ -9,15 +9,7 @@ function isValidSlot(name: string): boolean {
   return false;
 }
 
-/**
- * Select which uploaded files should be passed to conversion.
- *
- * - Only save slots 0000-0015 and their slot_ metadata are considered.
- * - A numeric save (e.g. `0000.bin`) is included only when selected.
- * - Its matching `slot_0000.bin` metadata is included only when the
- *   corresponding save is selected.
- * - Output order matches input order.
- */
+/** Select which uploaded files should be passed to conversion. */
 export function selectConversionFiles(
   files: readonly File[],
   selectedSaves: ReadonlySet<string>,

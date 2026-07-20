@@ -20,8 +20,8 @@ import {
   extractSaveMeta,
   type Platform,
   type ConversionResult,
-} from "./converter";
-import { selectConversionFiles } from "./file-selection";
+} from "./lib/converter";
+import { selectConversionFiles } from "./lib/file-selection";
 
 export default function App() {
   const [files, setFiles] = useState<SaveFolderFile[]>([]);
@@ -61,7 +61,6 @@ export default function App() {
       return;
     }
 
-    // Extract player name + playtime from slot_ metadata files
     try {
       const meta = await extractSaveMeta(rawFiles);
       const map = new Map<string, { playerName: string; playtime: string }>();
@@ -187,8 +186,7 @@ export default function App() {
               DSTS Save Converter
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Convert Digimon Story: Time Stranger saves between PC and Nintendo Switch. Nothing
-              leaves your browser.
+              Convert Digimon Story: Time Stranger saves between PC and Nintendo Switch.
             </p>
           </div>
         </header>
@@ -216,9 +214,8 @@ export default function App() {
             <AccordionItem value="issues">
               <AccordionTrigger className="py-3">Experiencing issues?</AccordionTrigger>
               <AccordionContent className="text-muted-foreground pb-3">
-                I've worked through the major differences between the PC and Switch formats, but I
-                haven't fully tested the full range of saves out there. There might be things that
-                break in scenarios I haven't covered.
+                I've tested conversions in-game on both PC and Switch and they work, but I haven't
+                done a full playthrough on converted saves, so edge cases may still surface.
                 <br />
                 <br />
                 If you run into anything weird,{" "}

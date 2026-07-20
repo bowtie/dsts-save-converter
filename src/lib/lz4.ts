@@ -1,12 +1,4 @@
-/**
- * LZ4 block format compress/decompress.
- *
- * This is a browser-compatible port of the LZ4 block algorithm,
- * derived from lz4js (https://github.com/Benzinga/lz4js).
- *
- * The Switch save format uses raw LZ4 **block** compression (not frame),
- * so we expose block-level functions only.
- */
+/** LZ4 block format compress/decompress. */
 
 // ── Constants ──────────────────────────────────────────────
 const MIN_MATCH = 4;

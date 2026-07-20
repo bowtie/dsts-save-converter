@@ -8,6 +8,12 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Toaster, toast } from "@/components/ui/toast";
 import { DownloadIcon, LoaderIcon, TriangleAlertIcon } from "lucide-react";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
   convertPcToSwitch,
   convertSwitchToPc,
   detectPlatform,
@@ -200,6 +206,37 @@ export default function App() {
             </span>
           </AlertDescription>
         </Alert>
+
+        {/* FAQ */}
+        <div className="mb-6">
+          <Accordion>
+            <AccordionItem value="how">
+              <AccordionTrigger className="py-3">How does it work?</AccordionTrigger>
+              <AccordionContent className="text-muted-foreground pb-3">
+                Just drop your save folder and hit convert. The converter auto-detects whether it's
+                PC or Switch and converts to the other platform. Everything runs right in your
+                browser, nothing gets uploaded anywhere.
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="issues">
+              <AccordionTrigger className="py-3">Experiencing issues?</AccordionTrigger>
+              <AccordionContent className="text-muted-foreground pb-3">
+                The save file differences between PC and Switch are still being figured out, so it's
+                not clear yet what carries over properly and what doesn't. Some data might not work
+                correctly on the other platform. If you run into anything weird,{" "}
+                <a
+                  href="https://github.com/bowtie/dsts-save-converter/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  let me know
+                </a>
+                .
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
 
         {/* Converter */}
         <Card className="gap-0 rounded-xl py-0">

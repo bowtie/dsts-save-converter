@@ -119,13 +119,7 @@ export type Platform = "pc" | "switch" | "unknown";
  * Switch saves: 1024-byte plaintext header + LZ4-compressed data (variable size, header is readable text)
  */
 export async function detectPlatform(files: File[]): Promise<Platform> {
-  const saveFiles = files.filter(
-    (f) =>
-      f.name.endsWith(".bin") &&
-      !f.name.startsWith("slot_") &&
-      f.name !== "system_data.bin" &&
-      f.name !== "sysdata_dx11.bin",
-  );
+  const saveFiles = files.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
   if (saveFiles.length === 0) return "unknown";
 
   // PC saves are always exactly 3,098,176 bytes
@@ -164,7 +158,9 @@ export interface SaveFileMeta {
  * Maps slot_NNNN.bin metadata to the corresponding NNNN.bin save file.
  */
 export async function extractSaveMeta(files: File[]): Promise<SaveFileMeta[]> {
-  const slotFiles = files.filter((f) => f.name.startsWith("slot_") && f.name.endsWith(".bin"));
+  const slotFiles = files.filter(
+    (f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15,
+  );
 
   const results: SaveFileMeta[] = [];
 
@@ -272,15 +268,9 @@ export async function convertPcToSwitch(pcFiles: File[]): Promise<ConversionResu
   const log: string[] = [];
   const files = new Map<string, Uint8Array>();
 
-  // Categorize PC files
-  const saveFiles = pcFiles.filter(
-    (f) =>
-      f.name.endsWith(".bin") &&
-      !f.name.startsWith("slot_") &&
-      f.name !== "system_data.bin" &&
-      f.name !== "sysdata_dx11.bin",
-  );
-  const slotFiles = pcFiles.filter((f) => f.name.startsWith("slot_"));
+  // Categorize PC files — only 0000-0015.bin and slot_0000-0015.bin
+  const saveFiles = pcFiles.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
+  const slotFiles = pcFiles.filter((f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15);
 
   if (saveFiles.length === 0) throw new Error("No save .bin files found in PC files.");
 
@@ -376,15 +366,9 @@ export async function convertSwitchToPc(switchFiles: File[]): Promise<Conversion
   const log: string[] = [];
   const files = new Map<string, Uint8Array>();
 
-  // Categorize Switch files
-  const saveFiles = switchFiles.filter(
-    (f) =>
-      f.name.endsWith(".bin") &&
-      !f.name.startsWith("slot_") &&
-      f.name !== "system_data.bin" &&
-      f.name !== "sysdata_dx11.bin",
-  );
-  const slotFiles = switchFiles.filter((f) => f.name.startsWith("slot_"));
+  // Categorize Switch files — only 0000-0015.bin and slot_0000-0015.bin
+  const saveFiles = switchFiles.filter((f) => /^\d{4}\.bin$/.test(f.name) && parseInt(f.name) <= 15);
+  const slotFiles = switchFiles.filter((f) => /^slot_\d{4}\.bin$/.test(f.name) && parseInt(f.name.slice(5)) <= 15);
 
   if (saveFiles.length === 0) throw new Error("No save .bin files found in Switch files.");
 

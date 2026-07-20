@@ -43,6 +43,23 @@ function isSaveFile(name: string) {
   return /^\d+\.bin$/.test(name);
 }
 
+/** Only accept save slots 0000-0015 and their slot_ metadata. */
+function isValidSaveFile(name: string): boolean {
+  // 0000.bin through 0015.bin
+  const saveMatch = name.match(/^(\d{4})\.bin$/);
+  if (saveMatch) {
+    const num = parseInt(saveMatch[1], 10);
+    return num >= 0 && num <= 15;
+  }
+  // slot_0000.bin through slot_0015.bin
+  const slotMatch = name.match(/^slot_(\d{4})\.bin$/);
+  if (slotMatch) {
+    const num = parseInt(slotMatch[1], 10);
+    return num >= 0 && num <= 15;
+  }
+  return false;
+}
+
 export function SaveFolderUpload(props: SaveFolderUploadProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [rootFiles, setRootFiles] = useState<File[]>([]);
@@ -56,9 +73,9 @@ export function SaveFolderUpload(props: SaveFolderUploadProps) {
 
   const handleFileChange = useCallback(
     (details: { acceptedFiles: File[] }) => {
-      // Only .bin files directly in the selected folder (no subdirs)
+      // Only valid save files (0000-0015 + slot_ metadata) directly in the folder
       const filtered = details.acceptedFiles.filter((file) => {
-        if (!file.name.endsWith(".bin")) return false;
+        if (!isValidSaveFile(file.name)) return false;
         const rel = (file as any).webkitRelativePath || file.name;
         // "folder/file.bin" = 2 segments, "file.bin" = 1 segment (no subdirs)
         return rel.split("/").length <= 2;

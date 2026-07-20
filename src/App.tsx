@@ -201,8 +201,7 @@ export default function App() {
           <AlertTitle>Heads up, this is experimental</AlertTitle>
           <AlertDescription>
             <span>
-              The full extent of what's covered and what might break isn't known yet. Back up your
-              save before using it!
+              Back up your save before using it.
             </span>
           </AlertDescription>
         </Alert>
@@ -221,9 +220,12 @@ export default function App() {
             <AccordionItem value="issues">
               <AccordionTrigger className="py-3">Experiencing issues?</AccordionTrigger>
               <AccordionContent className="text-muted-foreground pb-3">
-                The save file differences between PC and Switch are still being figured out, so it's
-                not clear yet what carries over properly and what doesn't. Some data might not work
-                correctly on the other platform. If you run into anything weird,{" "}
+                I've worked through the major differences between the PC and Switch formats, but I
+                haven't fully tested the full range of saves out there. There might be things that
+                break in scenarios I haven't covered.
+                <br />
+                <br />
+                If you run into anything weird,{" "}
                 <a
                   href="https://github.com/bowtie/dsts-save-converter/issues"
                   target="_blank"

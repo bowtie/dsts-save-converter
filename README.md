@@ -18,4 +18,4 @@ Everything else — roster, inventory, items, quests, dialogue, playtime, positi
 
 ## Notes
 
-- This is experimental. The full extent of what carries over properly between PC and Switch isn't known yet, so back up your save before using it.
+- This is experimental. Back up your save before using it.
